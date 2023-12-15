@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken')
-const User =  require('../models/userModel')
+const jwt = require("jsonwebtoken");
+const User = require("../models/userModel");
 
 exports.signup = async (req, res) => {
   // Création d'un nouvel utilisateur en utilisant le schéma d'utilisateur
@@ -10,22 +10,17 @@ exports.signup = async (req, res) => {
 
   User.create(req.body)
     .then((user) => {
-
-      const token = jwt.sign({id:user._id}, process.env.JWT_SECRET,{
-        expiresIN:process.env.JWT_EXPIRATION
-
-      })
-
-
-
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRATION,
+      });
 
       // Envoi d'une réponse avec le statut 201 (créé) et les données de l'utilisateur.
       // Cette réponse est envoyée au client qui a fait la requête POST.
       res.status(201).json({
         status: "success",
         data: {
+          token,
           user,
-          token
         },
       });
     })
