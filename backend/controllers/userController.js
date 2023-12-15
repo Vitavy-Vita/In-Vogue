@@ -10,9 +10,14 @@ exports.signup = async (req, res) => {
 
   User.create(req.body)
     .then((user) => {
+      // Création d'un token d'authentification pour l'utilisateur.
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRATION,
       });
+
+      // stocker le token dans un cookie
+      // Pour le nom du cookie on peut utiliser 'authorization' ou 'jwt'
+      res.cookie('jwt', token)
 
       // Envoi d'une réponse avec le statut 201 (créé) et les données de l'utilisateur.
       // Cette réponse est envoyée au client qui a fait la requête POST.
