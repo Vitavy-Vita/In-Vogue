@@ -12,7 +12,7 @@ exports.signup = async (req, res) => {
     .then((user) => {
 
       const token = jwt.sign({id:user._id}, process.env.JWT_SECRET,{
-        expiresIN:
+        expiresIN:process.env.JWT_EXPIRATION
 
       })
 
@@ -25,6 +25,7 @@ exports.signup = async (req, res) => {
         status: "success",
         data: {
           user,
+          token
         },
       });
     })
