@@ -1,161 +1,10 @@
-const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
-const sendEmail = require("../utile/email");
 const env = require("../config/env");
-const forgetPasswordTemplate = require("../utile/email-templates/forgetPasswordTemplate");
-
-const createSendToken = ({ user, statusCode, res }) => {
-  // Création d'un token d'authentification pour l'utilisateur.
-  const token = jwt.sign({ id: user._id }, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRATION,
-  });
-
-  // stocker le token dans un cookie
-  // Pour le nom du cookie on peut utiliser 'authorization' ou 'jwt'
-  res.cookie("jwt", token, {
-    expires: new Date(
-      Date.now() + env.JWT_COOKIE_EXPIRATION * 1000 * 60 * 60 * 24
-    ),
-    httpOnly: true,
-  });
-  res.status(statusCode).json({
-    status: "success",
-    data: {
-      token,
-      user,
-    },
-  });
-};
-
-exports.signup = async (req, res) => {
-  // Création d'un nouvel utilisateur en utilisant le schéma d'utilisateur
-  // et les données provenant du corps de la requête.
-  // 'User.create(req.body)' renvoie une promesse qui résout à l'utilisateur créé.
-  // L'utilisation de 'await' permet d'attendre que la promesse soit résolue avant de continuer l'exécution du code.
-  // Cela signifie que 'user' contiendra l'utilisateur créé une fois que la promesse sera résolue.
-
-  User.create(req.body)
-    .then((userData) => {
-      // Status 201 = Created (création d'une nouvelle ressource)
-      createSendToken({ user: userData, statusCode: 201, res });
-    })
-    .catch((err) => {
-      res.status(400).json({
-        status: "fail",
-        statusCode: err.statusCode,
-        message: err.message,
-      });
-    });
-};
-
-exports.login = (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    res.status(400).json({
-      status: "fail",
-      message: "Please provide email and password",
-    });
-  }
-
-  User.findOne({ email })
-    .select("+password -_id")
-    .then(async (userData) => {
-      const verifyPassword = await userData.correctPassword(
-        password,
-        userData.password
-      );
-
-      if (!userData || !verifyPassword) {
-        res.status(401).json({
-          status: "fail",
-          message: "Incorrect email or password",
-        });
-      }
-      createSendToken({ user: userData, statusCode: 200, res });
-    })
-    .catch((err) => {
-      res.status(err.statusCode || 500).json({
-        status: "error",
-        message: err.message,
-      });
-    });
-};
-
-exports.forgetPassword = (req, res) => {
-  User.findOne({ email: req.body.email })
-    .then(async (userData) => {
-      const resetToken = await userData.createResetPassword();
-
-      //  Envoyer le token par email à l'utilisateur
-      sendEmail({
-        to: userData.email,
-        subject: 'Reset your password 🔐 (Valid for 15min)',
-        html: forgetPasswordTemplate(resetToken),
-      });
-
-      // Envoie d'une réponse au client
-      // StatusCode représente le statut de la réponse qu'on veut envoyer au client (201, 200)
-      res.status(200).json({
-        status: 'success',
-        token: resetToken,
-        message: 'Token sent to email',
-      });
-    })
-    .catch((err) => {
-      res.status(err.statusCode || 500).json({
-        status: 'error',
-        message: err.message,
-      });
-    });
-};
-// api/v1/users/reset-password/:token
-// Modifier le mot de passe de l'utilisateur
-exports.resetPassword = (req, res) => {
-  // 1) Obtenir l'utilisateur basé sur le token
-  // 2) Vérifier si le token n'a pas expiré
-  // 3) Mettre à jour le mot de passe
-  // 4) Connecter l'utilisateur
-  // 5) Envoyer une réponse au client
-
-  // 1) Obtenir l'utilisateur basé sur le token
-  const hashedToken = crypto
-    .createHash("sha256")
-    .update(req.params.token)
-    .digest("hex");
-
-  // 2) Vérifier si le token n'a pas expiré
-  User.findOne({
-    passwordResetToken: hashedToken,
-    passwordResetExpires: { $gt: Date.now() },
-  })
-    .then(async (userData) => {
-      if (!userData) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Token is invalid or has expired",
-        });
-      }
-      // Mettre à jour le mot de passe
-      userData.password = req.body.password;
-      userData.passwordConfirm = req.body.passwordConfirm;
-      userData.passwordResetToken = undefined;
-      userData.passwordResetExpires = undefined;
-
-      await userData.save();
-      // Connecter l'utilisateur
-      createSendToken({ user: userData, statusCode: 200, res });
-    })
-    .catch((err) => {
-      res.status(err.statusCode || 500).json({
-        status: "error",
-        message: err.message,
-      });
-    });
-};
+const multer = require("multer");
+const sharp = require('sharp')
 
 exports.getUser = (req, res) => {
-  User.findById(req.params.id)
+  User.findById(v)
     .then((userData) => {
       res.status(200).json({
         status: "success",
@@ -172,7 +21,7 @@ exports.getUser = (req, res) => {
     });
 };
 
-exports.getAllUsers = (req, res) => {
+exports.getAllUsers = (_, res) => {
   User.find()
     .then((users) => {
       res.status(200).json({
@@ -243,4 +92,67 @@ exports.deleteUser = (req, res) => {
         message: err.message,
       });
     });
+};
+
+////////////////////////////////////// MULTER (UPLOAD PHOTO) //////////////////////////////////////
+// Définition du stockage pour multer. Ici, nous utilisons 'multer.memoryStorage()' pour stocker les fichiers en mémoire sous forme de Buffer.
+// Cela est utile lorsque vous voulez manipuler les fichiers avant de les enregistrer.
+const multerStorage = multer.memoryStorage();
+
+// Définition du filtre pour multer. Cette fonction est appelée pour chaque fichier téléchargé.
+// Si le fichier est une image (son type MIME commence par 'image'), la fonction de rappel 'cb' est appelée avec 'true' pour indiquer que le fichier doit être accepté.
+// Sinon, 'cb' est appelé avec une nouvelle erreur et 'false' pour indiquer que le fichier doit être rejeté.
+const multerFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image")) {
+    cb(null, true);
+  } else {
+    // 400
+
+    throw new Error("Not an image! Please upload only images.");
+  }
+};
+
+// Initialisation de multer avec le stockage et le filtre définis précédemment.
+// Multer est un middleware pour gérer le téléchargement de fichiers dans Express.
+const upload = multer({
+  storage: multerStorage,
+  fileFilter: multerFilter,
+});
+
+// Upload photo
+exports.uploadUserPhoto = upload.single('photo');
+
+// Fonction pour télécharger une photo
+exports.uploadPhoto = (req, res, next) => {
+  // Si aucun fichier n'a été téléchargé, passe au prochain middleware
+  if (!req.file) return next();
+
+  // Définit le nom du fichier. Il est composé de 'user-', l'ID de l'utilisateur, la date actuelle en millisecondes, et l'extension '.jpeg'
+  req.file.filename = `user-${Date.now()}.jpeg`;
+
+  // Utilise la bibliothèque sharp pour traiter l'image
+  sharp(req.file.buffer)
+    // Redimensionne l'image à 500x500 pixels
+    .resize(500, 500)
+    // Convertit l'image au format JPEG
+    .toFormat('jpeg')
+    // Définit la qualité de l'image à 90
+    .jpeg({ quality: 90 })
+    // Enregistre l'image dans le dossier 'public/images/users' avec le nom de fichier défini précédemment
+    .toFile(`public/images/users/${req.file.filename}`)
+    // Si le traitement de l'image réussit, affiche les données de l'image dans la console
+    .then((data) => console.log('"data" :', data))
+    // Si une erreur se produit lors du traitement de l'image, envoie une réponse avec le statut 500 (Erreur interne du serveur) et le message d'erreur
+    .catch((err) =>
+      res.status(500).json({
+        status: 'error',
+        message: err.message,
+      })
+    );
+
+  // Envoie une réponse avec le statut 200 (OK) et un message indiquant que la photo a été téléchargée avec succès
+  res.status(200).json({
+    status: 'success',
+    message: 'Photo uploaded successfully',
+  });
 };

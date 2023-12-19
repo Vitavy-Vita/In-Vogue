@@ -47,6 +47,7 @@ const userSchema = new mongoose.Schema({
   },
   changePasswordAfter: Date,
   passwordResetToken: String,
+  passwordResetExpires: Date,
 });
 // Regex, "anything that starts with find"
 userSchema.pre(/^find/, function (next) {
