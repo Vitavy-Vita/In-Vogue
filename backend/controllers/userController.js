@@ -1,17 +1,20 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
+const sendEmail = require("../utile/email");
+const env = require("../config/env");
+const forgetPasswordTemplate = require("../utile/email-templates/forgetPasswordTemplate");
 
 const createSendToken = ({ user, statusCode, res }) => {
   // Création d'un token d'authentification pour l'utilisateur.
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRATION,
+  const token = jwt.sign({ id: user._id }, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRATION,
   });
 
   // stocker le token dans un cookie
   // Pour le nom du cookie on peut utiliser 'authorization' ou 'jwt'
   res.cookie("jwt", token, {
     expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRATION * 1000 * 60 * 60 * 24
+      Date.now() + env.JWT_COOKIE_EXPIRATION * 1000 * 60 * 60 * 24
     ),
     httpOnly: true,
   });
@@ -72,6 +75,96 @@ exports.login = (req, res) => {
       createSendToken({ user: userData, statusCode: 200, res });
     })
     .catch((err) => {
+      res.status(err.statusCode || 500).json({
+        status: "error",
+        message: err.message,
+      });
+    });
+};
+
+exports.forgetPassword = (req, res) => {
+  User.findOne({ email: req.body.email })
+    .then(async (userData) => {
+      const resetToken = await userData.createResetPassword();
+
+      //  Envoyer le token par email à l'utilisateur
+      sendEmail({
+        to: userData.email,
+        subject: 'Reset your password 🔐 (Valid for 15min)',
+        html: forgetPasswordTemplate(resetToken),
+      });
+
+      // Envoie d'une réponse au client
+      // StatusCode représente le statut de la réponse qu'on veut envoyer au client (201, 200)
+      res.status(200).json({
+        status: 'success',
+        token: resetToken,
+        message: 'Token sent to email',
+      });
+    })
+    .catch((err) => {
+      res.status(err.statusCode || 500).json({
+        status: 'error',
+        message: err.message,
+      });
+    });
+};
+// api/v1/users/reset-password/:token
+// Modifier le mot de passe de l'utilisateur
+exports.resetPassword = (req, res) => {
+  // 1) Obtenir l'utilisateur basé sur le token
+  // 2) Vérifier si le token n'a pas expiré
+  // 3) Mettre à jour le mot de passe
+  // 4) Connecter l'utilisateur
+  // 5) Envoyer une réponse au client
+
+  // 1) Obtenir l'utilisateur basé sur le token
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(req.params.token)
+    .digest("hex");
+
+  // 2) Vérifier si le token n'a pas expiré
+  User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() },
+  })
+    .then(async (userData) => {
+      if (!userData) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Token is invalid or has expired",
+        });
+      }
+      // Mettre à jour le mot de passe
+      userData.password = req.body.password;
+      userData.passwordConfirm = req.body.passwordConfirm;
+      userData.passwordResetToken = undefined;
+      userData.passwordResetExpires = undefined;
+
+      await userData.save();
+      // Connecter l'utilisateur
+      createSendToken({ user: userData, statusCode: 200, res });
+    })
+    .catch((err) => {
+      res.status(err.statusCode || 500).json({
+        status: "error",
+        message: err.message,
+      });
+    });
+};
+
+exports.getUser = (req, res) => {
+  User.findById(req.params.id)
+    .then((userData) => {
+      res.status(200).json({
+        status: "success",
+        data: {
+          user: userData,
+        },
+      });
+    })
+    .catch((err) => {
       res.status(err.statusCode).json({
         status: "error",
         message: err.message,
@@ -99,25 +192,6 @@ exports.getAllUsers = (req, res) => {
     });
 };
 
-exports.getUser = (req, res) => {
-  User.findById(req.params.id).then((userData) => {
-    res
-      .status(200)
-      .json({
-        status: "success",
-        data: {
-          user: userData,
-        },
-      })
-      .catch((err) => {
-        res.status(err.statusCode).json({
-          status: "error",
-          message: err.message,
-        });
-      });
-  });
-};
-
 exports.updateUser = (req, res) => {
   const filterObject = function (object, ...allowFields) {
     // allowedFields = ['name', 'email']
@@ -140,7 +214,7 @@ exports.updateUser = (req, res) => {
       res.status(200).json({
         status: "success",
         data: {
-          userData,
+          user: userData,
         },
       });
     })
