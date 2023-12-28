@@ -35,6 +35,7 @@ exports.signup = async (req, res) => {
   // 'User.create(req.body)' renvoie une promesse qui résout à l'utilisateur créé.
   // L'utilisation de 'await' permet d'attendre que la promesse soit résolue avant de continuer l'exécution du code.
   // Cela signifie que 'user' contiendra l'utilisateur créé une fois que la promesse sera résolue.
+  // req = request / res = response
 
   User.create(req.body)
     .then((userData) => {
@@ -110,7 +111,6 @@ exports.forgetPassword = (req, res) => {
         subject: "Reset your password 🔐 (Valid for 15min)",
         html: forgetPasswordTemplate(resetToken),
       });
-
       // Envoie d'une réponse au client
       // StatusCode représente le statut de la réponse qu'on veut envoyer au client (201, 200)
       res.status(200).json({
@@ -252,6 +252,6 @@ exports.restrictTo = (...roles) => {
         message: "You do not have permission to perform this action",
       });
     }
-    next()
+    next();
   };
 };

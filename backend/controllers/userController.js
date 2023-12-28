@@ -1,10 +1,37 @@
 const User = require("../models/userModel");
 const env = require("../config/env");
 const multer = require("multer");
-const sharp = require('sharp')
+const sharp = require("sharp");
+const jwt = require("jsonwebtoken");
 
 exports.getUser = (req, res) => {
-  User.findById(v)
+  User.findById(req.params.id)
+    .then((userData) => {
+      res.status(200).json({
+        status: "success",
+        data: {
+          user: userData,
+        },
+      });
+    })
+    .catch((err) => {
+      res.status(err.statusCode ?? 500).json({
+        status: "error",
+        message: err.message,
+      });
+    });
+};
+exports.getCurrentUser = (req, res) => {
+  const token = req.cookies.jwt;
+  let decoded;
+  try {
+    decoded = jwt.verify(token, env.JWT_SECRET);
+  } catch (error) {
+    res.status(403).end();
+    return;
+  }
+
+  User.findById(decoded.id)
     .then((userData) => {
       res.status(200).json({
         status: "success",
@@ -120,7 +147,7 @@ const upload = multer({
 });
 
 // Upload photo
-exports.uploadUserPhoto = upload.single('photo');
+exports.uploadUserPhoto = upload.single("photo");
 
 // Fonction pour télécharger une photo
 exports.uploadPhoto = (req, res, next) => {
@@ -135,7 +162,7 @@ exports.uploadPhoto = (req, res, next) => {
     // Redimensionne l'image à 500x500 pixels
     .resize(500, 500)
     // Convertit l'image au format JPEG
-    .toFormat('jpeg')
+    .toFormat("jpeg")
     // Définit la qualité de l'image à 90
     .jpeg({ quality: 90 })
     // Enregistre l'image dans le dossier 'public/images/users' avec le nom de fichier défini précédemment
@@ -145,14 +172,14 @@ exports.uploadPhoto = (req, res, next) => {
     // Si une erreur se produit lors du traitement de l'image, envoie une réponse avec le statut 500 (Erreur interne du serveur) et le message d'erreur
     .catch((err) =>
       res.status(500).json({
-        status: 'error',
+        status: "error",
         message: err.message,
       })
     );
 
   // Envoie une réponse avec le statut 200 (OK) et un message indiquant que la photo a été téléchargée avec succès
   res.status(200).json({
-    status: 'success',
-    message: 'Photo uploaded successfully',
+    status: "success",
+    message: "Photo uploaded successfully",
   });
 };

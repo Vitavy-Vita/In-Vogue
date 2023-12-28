@@ -24,6 +24,7 @@ router
     authController.restrictTo("admin"),
     userController.getAllUsers
   );
+router.route("/current").get(userController.getCurrentUser);
 router
   .route("/:id")
   .get(userController.getUser)
